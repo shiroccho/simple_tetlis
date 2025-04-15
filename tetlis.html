@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>シンプルなテトリス</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f0f0f0; }
+        #tetrisCanvas { border: 2px solid #333; background-color: #222; }
+        #controls { margin-left: 20px; }
+        #score { font-size: 1.5em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div>
+        <canvas id="tetrisCanvas" width="240" height="400"></canvas>
+        <div id="controls">
+            <div id="score">スコア: 0</div>
+            <p>操作:</p>
+            <ul>
+                <li>左キー: 左移動</li>
+                <li>右キー: 右移動</li>
+                <li>下キー: 下移動 (ソフトドロップ)</li>
+                <li>上キー: 回転</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetrisCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+
+        const grid = [];
+        const gridRows = 20;
+        const gridCols = 12;
+        const blockSize = 20;
+
+        let currentPiece = null;
+        let gameInterval;
+        let score = 0;
+        const fallInterval = 1000; // ミリ秒
+
+        const colors = [
+            null, 'cyan', 'blue', 'orange', 'yellow', 'green', 'purple', 'red'
+        ];
+
+        const tetrominoes = [
+            [], // 0: 空
+            [[0,0],[0,-1],[0,1],[0,2]],       // I
+            [[0,0],[-1,0],[1,0],[1,-1]],     // L
+            [[0,0],[-1,0],[1,0],[-1,-1]],    // J
+            [[0,0],[-1,0],[0,-1],[1,0]],     // T
+            [[0,0],[-1,-1],[0,-1],[1,0]],    // S
+            [[0,0],[-1,0],[0,-1],[1,-1]],    // Z
+            [[0,0],[-1,0],[0,-1],[-1,-1]]    // O
+        ];
+
+        function createGrid() {
+            for (let y = 0; y < gridRows; y++) {
+                grid[y] = [];
+                for (let x = 0; x < gridCols; x++) {
+                    grid[y][x] = 0;
+                }
+            }
+        }
+
+        function createPiece() {
+            const type = Math.floor(Math.random() * (tetrominoes.length - 1)) + 1;
+            const tetromino = tetrominoes[type];
+            return {
+                type: type,
+                shape: tetromino,
+                x: Math.floor(gridCols / 2) - Math.ceil(tetromino.reduce((max, p) => Math.max(max, p[0]), 0) / 2),
+                y: 0
+            };
+        }
+
+        function drawBlock(x, y, colorIndex) {
+            ctx.fillStyle = colors[colorIndex];
+            ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
+            ctx.strokeStyle = '#000';
+            ctx.strokeRect(x * blockSize, y * blockSize, blockSize, blockSize);
+        }
+
+        function drawGrid() {
+            for (let y = 0; y < gridRows; y++) {
+                for (let x = 0; x < gridCols; x++) {
+                    if (grid[y][x] !== 0) {
+                        drawBlock(x, y, grid[y][x]);
+                    }
+                }
+            }
+        }
+
+        function drawPiece() {
+            if (currentPiece) {
+                currentPiece.shape.forEach(block => {
+                    drawBlock(currentPiece.x + block[0], currentPiece.y + block[1], currentPiece.type);
+                });
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            drawPiece();
+        }
+
+        function movePiece(dx, dy) {
+            const newX = currentPiece.x + dx;
+            const newY = currentPiece.y + dy;
+            if (!collision(newX, newY, currentPiece.shape)) {
+                currentPiece.x = newX;
+                currentPiece.y = newY;
+                draw();
+                return true;
+            }
+            return false;
+        }
+
+        function rotatePiece() {
+            const shape = currentPiece.shape;
+            const newShape = shape.map(p => [-p[1], p[0]]);
+            const newX = currentPiece.x;
+            const newY = currentPiece.y;
+
+            if (!collision(newX, newY, newShape)) {
+                currentPiece.shape = newShape;
+                draw();
+            }
+        }
+
+        function collision(x, y, shape) {
+            return shape.some(block => {
+                const newX = x + block[0];
+                const newY = y + block[1];
+                return (
+                    newX < 0 ||
+                    newX >= gridCols ||
+                    newY >= gridRows ||
+                    (newY >= 0 && grid[newY][newX] !== 0)
+                );
+            });
+        }
+
+        function mergePiece() {
+            currentPiece.shape.forEach(block => {
+                const x = currentPiece.x + block[0];
+                const y = currentPiece.y + block[1];
+                if (y >= 0) {
+                    grid[y][x] = currentPiece.type;
+                }
+            });
+        }
+
+        function clearLines() {
+            let linesCleared = 0;
+            for (let y = gridRows - 1; y >= 0; y--) {
+                if (grid[y].every(cell => cell !== 0)) {
+                    linesCleared++;
+                    grid.splice(y, 1);
+                    grid.unshift(Array(gridCols).fill(0));
+                }
+            }
+            score += linesCleared * linesCleared * 100;
+            scoreElement.textContent = `スコア: ${score}`;
+        }
+
+        function gameTick() {
+            if (!movePiece(0, 1)) {
+                mergePiece();
+                currentPiece = createPiece();
+                if (collision(currentPiece.x, currentPiece.y, currentPiece.shape)) {
+                    clearInterval(gameInterval);
+                    alert(`ゲームオーバー！ スコア: ${score}`);
+                }
+                clearLines();
+                draw();
+            }
+        }
+
+        function startGame() {
+            createGrid();
+            currentPiece = createPiece();
+            draw();
+            gameInterval = setInterval(gameTick, fallInterval);
+            score = 0;
+            scoreElement.textContent = `スコア: ${score}`;
+        }
+
+        document.addEventListener('keydown', event => {
+            switch (event.key) {
+                case 'ArrowLeft':
+                    movePiece(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    movePiece(1, 0);
+                    break;
+                case 'ArrowDown':
+                    movePiece(0, 1);
+                    break;
+                case 'ArrowUp':
+                    rotatePiece();
+                    break;
+            }
+        });
+
+        startGame();
+    </script>
+</body>
+</html>
